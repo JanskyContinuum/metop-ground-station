@@ -1,0 +1,6 @@
+sudo apt remove libomp-dev libzstd-dev libpng-dev libtiff-dev \
+libjemalloc-dev libfftw3-dev libvolk2-dev libnng-dev \
+libvulkan-dev glslang-tools libglfw3-dev \
+libportaudio2 portaudio19-dev
+
+ satdump pipeline metop_ahrpt baseband test_capture_094512.s16 Pictures --samplerate=2400000 --baseband_format=cs16
