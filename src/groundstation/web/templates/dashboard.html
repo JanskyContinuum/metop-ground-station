@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% block content %}
+<p class="eyebrow">STATION OVERVIEW</p><h1>Reception control</h1>
+<div class="cards"><section><h2>Station state</h2><strong class="state">{{ status.state }}</strong>
+{% if status.active %}<p>Running: {{ status.active.satellite }} · {{ status.active.aos|localtime }}</p>{% endif %}
+{% if status.error %}<p class="error">{{ status.error }}</p>{% endif %}
+<form action="/hardware/stop" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger">STOP station</button></form></section>
+<section><h2>Next selected pass</h2>{% if status.selected %}<strong>{{ status.selected[0].satellite }}</strong><p>{{ status.selected[0].aos|localtime }}</p>{% else %}<p>No pass selected.</p>{% endif %}<a href="/passes">Choose passes →</a></section>
+<section><h2>Storage</h2><strong>{{ '%.1f'|format(free_gb) }} GB free</strong><p>Raw data is temporary. Successful receptions retain one AVHRR image.</p></section></div>
+<section><h2>Connections and orbit data</h2><dl><dt>Rotor</dt><dd>{{ hardware.rotor }}</dd><dt>SDR</dt><dd>{{ hardware.sdr }}</dd><dt>TLE cache age</dt><dd>{% if config.mock %}Offline demonstration{% elif tle_age is not none %}{{ '%.1f'|format(tle_age) }} hours{% else %}No cache{% endif %}</dd></dl>
+{% if tle_warning %}<p class="error">{{ tle_warning }}</p>{% endif %}{% if prediction_error %}<p class="error">{{ prediction_error }}</p>{% endif %}
+<a href="/hardware">Run hardware checks →</a></section>
+<section><h2>Latest reception</h2>{% if images %}<a href="{{ images[0].image_url }}"><img class="latest" src="{{ images[0].image_url }}" alt="Latest AVHRR reception"></a><p>{{ images[0].satellite }} · {{ images[0].aos|localtime }}</p>{% else %}<p>No received images yet. Select a pass to begin.</p>{% endif %}</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MetOp Ground Station</title><link rel="stylesheet" href="/static/style.css">
+{% if page in ['dashboard', 'passes'] %}<meta http-equiv="refresh" content="10">{% endif %}
+</head><body><header><a class="brand" href="/">METOP <span>Ground Station</span></a>
+<nav>{% for href,label in [('/', 'Dashboard'),('/passes','Passes'),('/gallery','Gallery'),('/hardware','Hardware')] %}<a href="{{ href }}">{{ label }}</a>{% endfor %}</nav></header>
+<main>{% if config.mock %}<aside class="notice">MOCK MODE · Simulated hardware, passes and images. No RF reception.</aside>{% endif %}
+{% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% block content %}{% endblock %}</main>
+<footer>Local station · {{ config.station.timezone }} · Selections are lost when the application stops.</footer></body></html>

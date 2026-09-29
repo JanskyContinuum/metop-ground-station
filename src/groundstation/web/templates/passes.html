@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}<p class="eyebrow">NEXT {{ config.passes.prediction_hours }} HOURS</p><h1>Choose a pass</h1>
+<p>Selections live in memory. Conflicts include preposition time. Times shown in {{ config.station.timezone }}.</p>
+<p>Recording uses the longest uninterrupted usable window. Processing is serial; a later pass may be missed while SatDump is busy.</p>
+{% if prediction_error %}<p class="error">{{ prediction_error }}</p>{% endif %}{% if tle_warning %}<p class="error">{{ tle_warning }}</p>{% endif %}
+<div class="table-wrap"><table><thead><tr><th>Satellite</th><th>AOS / LOS</th><th>TCA</th><th>Max elevation</th><th>Total / usable / recording</th><th>Selection</th></tr></thead><tbody>
+{% for p in passes %}<tr><td><strong>{{ p.satellite }}</strong></td><td>{{ p.aos|localtime }}<br>{{ p.los|localtime }}</td><td>{{ p.tca|localtime }}</td><td>{{ '%.1f'|format(p.max_elevation) }}°</td><td>{{ '%.0f'|format(p.duration) }} / {{ '%.0f'|format(p.usable_duration) }} / {{ '%.0f'|format((p.recording_window[1]-p.recording_window[0]).total_seconds()) }} s</td>
+<td><form method="post" action="/passes/{{ p.id }}/{{ 'cancel' if p.id in selected_ids else 'schedule' }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button>{{ 'Cancel running pass' if status.active and status.active.id == p.id else ('Cancel selection' if p.id in selected_ids else 'Schedule') }}</button></form></td></tr>
+{% else %}<tr><td colspan="6">No suitable passes in this window. Check TLE status and minimum elevation.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block content %}<p class="eyebrow">STATION DIAGNOSTICS</p><h1>Hardware checks</h1>
+<p>Motion requires verified mechanical limits and a clear swept path. Tests share the same hardware lock as tracking and G/T.</p>
+{% if status.halted %}<p class="error">Station stopped. Resume scheduling to select new passes.</p>{% endif %}
+<div class="actions">{% for action,label in [('rotor','Test rotor connection'),('position','Read rotor position'),('park','Park rotor'),('stop','STOP station'),('jog','Safe 2° jog and return'),('sdr','Probe SDR'),('record','Record SDR for 3 seconds'),('satdump','Check SatDump executable'),('tle','Refresh TLE and passes'),('resume','Resume scheduling')] %}
+<form method="post" action="/hardware/{{ action }}" {% if action in ['park','jog'] %}onsubmit="return confirm('Confirm the antenna swept path is clear.')"{% endif %}><input type="hidden" name="csrf" value="{{ csrf }}"><button {% if action == 'stop' %}class="danger"{% endif %}>{{ label }}</button></form>{% endfor %}</div>
+<section><h2>Last checks</h2><dl>{% for key,value in hardware.items() %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl><p>Connection status is from the last manual check; it is not continuous monitoring.</p></section>{% endblock %}

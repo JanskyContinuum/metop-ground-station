@@ -1,0 +1,67 @@
+# Historical reference values: verify on the actual station before live use.
+station:
+  latitude_deg: 52.218835
+  longitude_deg: 21.010946
+  altitude_m: 120
+  timezone: Europe/Warsaw
+rotor:
+  host: "" # REQUIRED: discover the existing Pi Zero; do not guess its IP.
+  port: 4533
+  azimuth_min_deg: -180
+  azimuth_max_deg: 300
+  elevation_min_deg: 50 # Conservative collision clearance; verify swept paths.
+  elevation_max_deg: 180
+  park_azimuth_deg: 0
+  park_elevation_deg: 50
+  update_interval_sec: 1.5
+  timeout_sec: 2
+  limits_confirmed: false # Set true only after checking mechanical limits.
+  settle_timeout_sec: 120
+  position_tolerance_deg: 1
+horizon_mask:
+  - [0, 50]
+  - [79.9, 50]
+  - [80, 30]
+  - [270, 30]
+  - [270.1, 50]
+sdr:
+  driver: sdrplay
+  center_frequency_hz: 1701300000
+  sample_rate_hz: 5000000
+  gain: 40
+  agc: false
+  biastee: false # Enable only if the installed RF chain needs SDR Bias-T power.
+  stall_timeout_sec: 5
+satdump:
+  executable: satdump
+  command_prefix: [pipeline] # Installed CLI may need [legacy] or []; see README.
+  pipeline: metop_ahrpt
+  baseband_format: cs16
+  image_glob: null # e.g. '**/AVHRR/**/avhrr_3_rgb*.png'
+  timeout_sec: 1800
+passes:
+  prediction_hours: 2
+  minimum_max_elevation_deg: 50
+  preposition_seconds: 90
+  satellites: [METOP-B, METOP-C]
+  sample_seconds: 2
+tle:
+  max_age_hours: 24
+  url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=TLE'
+  retry_seconds: 900
+storage:
+  root: data
+  work: work
+  gallery: gallery
+  failed_raw_retention_hours: 24
+  safety_margin_bytes: 2000000000
+  size_margin_factor: 1.2
+web:
+  host: 0.0.0.0
+  port: 8000
+gt:
+  index_url: https://wesis.bkg.bund.de/wesis_sfx_files_latest.txt
+  max_flux_age_seconds: 3600
+  safe_elevation_deg: 20
+  cold_offset_deg: 30
+  settle_seconds: 3
