@@ -1,4 +1,5 @@
 """Read-only by default; movement and park require explicit switches."""
+
 import argparse
 import threading
 
@@ -6,6 +7,7 @@ from groundstation.config import load_config
 from groundstation.hardware.lock import HardwareLock
 from groundstation.hardware.mocks import MockRotor
 from groundstation.hardware.rotor import RotorController
+from groundstation.services.diagnostics import Diagnostics
 
 
 def main():
@@ -18,24 +20,13 @@ def main():
     config = load_config(args.config)
     rotor = MockRotor(config.rotor) if config.mock else RotorController(config.rotor)
     stop = threading.Event()
-    with HardwareLock(config.storage.root.resolve()).hold("rotor CLI test"):
-        print("TCP rotctld position:", rotor.healthcheck())
-        if args.jog:
-            from groundstation.services.diagnostics import Diagnostics
-            diagnostic = Diagnostics(config, rotor, None, None, None, stop)
-            # Use the already acquired cross-process lock through a no-op adapter.
-            from contextlib import nullcontext
-            diagnostic.lock = type("Held", (), {"hold": lambda *args: nullcontext()})()
-            print(diagnostic.run("jog"))
-        if args.stop:
-            rotor.stop()
-            print("STOP acknowledged")
-        if args.park:
-            try:
-                rotor.wait_for_position(rotor.park(), stop)
-                print("Parked")
-            finally:
-                rotor.stop()
+    diagnostic = Diagnostics(
+        config, rotor, None, None, HardwareLock(config.storage.root.resolve()), stop
+    )
+    print(diagnostic.run("rotor"))
+    for action in ("jog", "stop", "park"):
+        if getattr(args, action):
+            print(diagnostic.run(action))
 
 
 if __name__ == "__main__":

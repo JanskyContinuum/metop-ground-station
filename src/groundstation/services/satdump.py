@@ -40,9 +40,16 @@ class SatDump:
         self.config = config
 
     def command(self, raw, output, rate):
-        return [self.config.executable, *self.config.command_prefix, self.config.pipeline,
-                "baseband", str(raw), str(output), f"--samplerate={rate:g}",
-                f"--baseband_format={self.config.baseband_format}"]
+        return [
+            self.config.executable,
+            *self.config.command_prefix,
+            self.config.pipeline,
+            "baseband",
+            str(raw),
+            str(output),
+            f"--samplerate={rate:g}",
+            f"--baseband_format={self.config.baseband_format}",
+        ]
 
     def available(self):
         found = shutil.which(self.config.executable)
@@ -55,8 +62,9 @@ class SatDump:
         output.mkdir(parents=True, exist_ok=True)
         # File-backed log prevents unbounded RAM capture and pipe deadlocks.
         with (output.parent / "satdump.log").open("wb") as log:
-            process = subprocess.Popen(self.command(raw, output, rate), stdout=log,
-                                       stderr=subprocess.STDOUT)
+            process = subprocess.Popen(
+                self.command(raw, output, rate), stdout=log, stderr=subprocess.STDOUT
+            )
             try:
                 deadline = time.monotonic() + self.config.timeout_sec
                 while process.poll() is None:
@@ -65,7 +73,9 @@ class SatDump:
                     if time.monotonic() >= deadline:
                         raise TimeoutError("SatDump timed out; raw retained")
                 if process.returncode != 0:
-                    raise RuntimeError(f"SatDump exited {process.returncode}; see retained satdump.log")
+                    raise RuntimeError(
+                        f"SatDump exited {process.returncode}; see retained satdump.log"
+                    )
             finally:
                 if process.poll() is None:
                     process.terminate()

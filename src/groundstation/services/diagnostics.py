@@ -9,10 +9,14 @@ class Diagnostics:
         self.config, self.rotor = config, rotor
         self.receiver_factory, self.decoder, self.lock = receiver_factory, decoder, lock
         self.stop = stop or threading.Event()
+        self.cancel = threading.Event()
+        self.halted = False
+        self.motion_guard = threading.Lock()
         self.status = {"rotor": "Not tested", "sdr": "Not tested", "satdump": "Not tested"}
 
     def run(self, action):
         with self.lock.hold(f"diagnostic {action}"):
+            self.cancel.clear()
             if self.stop.is_set():
                 raise InterruptedError("Application is shutting down")
             if action in {"rotor", "position"}:
@@ -20,19 +24,25 @@ class Diagnostics:
                 self.status["rotor"] = f"Connected: az {result[0]:.1f}, el {result[1]:.1f}"
                 return self.status["rotor"]
             if action == "park":
-                target = self.rotor.park()
-                self.rotor.wait_for_position(target, self.stop)
-                return "Rotor parked"
+                try:
+                    self._point(
+                        self.config.rotor.park_azimuth_deg, self.config.rotor.park_elevation_deg
+                    )
+                    return "Rotor parked"
+                finally:
+                    self.rotor.stop()
             if action == "jog":
                 original = self.rotor.get_position()
                 target = original[0] + 2, original[1]
-                if not self.config.rotor.azimuth_min_deg <= target[0] <= self.config.rotor.azimuth_max_deg:
+                if (
+                    not self.config.rotor.azimuth_min_deg
+                    <= target[0]
+                    <= self.config.rotor.azimuth_max_deg
+                ):
                     target = original[0] - 2, original[1]
                 try:
-                    command = self.rotor.set_position(*target)
-                    self.rotor.wait_for_position(command, self.stop)
-                    command = self.rotor.set_position(*original)
-                    self.rotor.wait_for_position(command, self.stop)
+                    self._point(*target)
+                    self._point(*original)
                     return "2 degree jog completed and original position restored"
                 finally:
                     self.rotor.stop()
@@ -46,10 +56,14 @@ class Diagnostics:
                 with self.receiver_factory(self.config.sdr) as receiver:
                     self.status["sdr"] = str(receiver.info())
                     if action == "record":
-                        check_space(self.config.work_dir, receiver.actual_rate, 3, self.config.storage)
+                        check_space(
+                            self.config.work_dir, receiver.actual_rate, 3, self.config.storage
+                        )
                         path = self.config.work_dir / f"test-{uuid.uuid4().hex}.cs16"
                         try:
-                            result = receiver.record(path, 3, self.stop)
+                            result = receiver.record(path, 3, self)
+                            if self.is_set():
+                                raise InterruptedError("SDR test stopped")
                             if not path.exists() or path.stat().st_size <= 0:
                                 raise RuntimeError("SDR test recorded no data")
                             return f"SDR test received {result['samples']} samples. {self.status['sdr']}"
@@ -57,3 +71,27 @@ class Diagnostics:
                             path.unlink(missing_ok=True)
                     return self.status["sdr"]
             raise ValueError("Unknown hardware action")
+
+    def is_set(self):
+        return self.halted or self.stop.is_set() or self.cancel.is_set()
+
+    def wait(self, seconds):
+        import time
+
+        deadline = time.monotonic() + seconds
+        while not self.is_set() and time.monotonic() < deadline:
+            self.cancel.wait(min(0.1, max(0, deadline - time.monotonic())))
+        return self.is_set()
+
+    def _point(self, azimuth, elevation):
+        with self.motion_guard:
+            if self.is_set():
+                raise InterruptedError("Diagnostic movement stopped")
+            target = self.rotor.set_position(azimuth, elevation)
+        self.rotor.wait_for_position(target, self)
+
+    def emergency_stop(self):
+        self.halted = True
+        self.cancel.set()
+        with self.motion_guard:
+            self.rotor.stop()

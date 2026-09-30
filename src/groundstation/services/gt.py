@@ -18,6 +18,12 @@ def y_from_db(sun_db, cold_db):
     return 10 ** ((sun_db - cold_db) / 10)
 
 
+def sky_separation(first, second):
+    az1, el1, az2, el2 = map(math.radians, (*first, *second))
+    cosine = math.sin(el1) * math.sin(el2) + math.cos(el1) * math.cos(el2) * math.cos(az1 - az2)
+    return math.degrees(math.acos(max(-1, min(1, cosine))))
+
+
 def calculate_gt(sun_power, cold_power, frequency_hz, flux_sfu):
     if any(not math.isfinite(n) or n <= 0 for n in (sun_power, cold_power, frequency_hz)):
         raise ValueError("Positive finite power and frequency required")
@@ -26,9 +32,16 @@ def calculate_gt(sun_power, cold_power, frequency_hz, flux_sfu):
         raise ValueError("Y must exceed 1; no credible Sun excess power measured")
     wavelength = 299792458 / frequency_hz
     gt = 8 * math.pi * 1.380649e-23 / (sfu_to_si(flux_sfu) * wavelength**2) * (y - 1)
-    return dict(p_sun=sun_power, p_cold=cold_power, y=y, solar_flux_sfu=flux_sfu,
-                solar_flux_si=sfu_to_si(flux_sfu), frequency_hz=frequency_hz,
-                gt_linear=gt, gt_db_per_k=10 * math.log10(gt))
+    return dict(
+        p_sun=sun_power,
+        p_cold=cold_power,
+        y=y,
+        solar_flux_sfu=flux_sfu,
+        solar_flux_si=sfu_to_si(flux_sfu),
+        frequency_hz=frequency_hz,
+        gt_linear=gt,
+        gt_db_per_k=10 * math.log10(gt),
+    )
 
 
 @dataclass(frozen=True)
@@ -39,9 +52,12 @@ class SolarFlux:
     source_url: str = ""
 
     def metadata(self, measurement_frequency_hz):
-        return {**asdict(self), "timestamp": self.timestamp.isoformat(),
-                "frequency_difference_hz": self.frequency_hz - measurement_frequency_hz,
-                "flux_column": "atmosphere-corrected, NOT normalized to 1 AU"}
+        return {
+            **asdict(self),
+            "timestamp": self.timestamp.isoformat(),
+            "frequency_difference_hz": self.frequency_hz - measurement_frequency_hz,
+            "flux_column": "atmosphere-corrected, NOT normalized to 1 AU",
+        }
 
 
 def parse_wesis(text, source_url=""):
@@ -75,8 +91,14 @@ def select_flux(records, frequency, when, max_age_seconds):
     valid = [r for r in records if abs((r.timestamp - when).total_seconds()) <= max_age_seconds]
     if not valid:
         raise ValueError("No WESIS flux within the configured time tolerance; no G/T calculated")
-    return min(valid, key=lambda r: (abs(r.frequency_hz - frequency),
-                                    abs((r.timestamp - when).total_seconds()), r.timestamp))
+    return min(
+        valid,
+        key=lambda r: (
+            abs(r.frequency_hz - frequency),
+            abs((r.timestamp - when).total_seconds()),
+            r.timestamp,
+        ),
+    )
 
 
 class WesisClient:
@@ -94,6 +116,7 @@ class WesisClient:
     def get_flux(self, frequency, when):
         import re
         import time
+
         index = self.cache / "index.txt"
         try:
             if not index.exists() or time.time() - index.stat().st_mtime > 900:
@@ -108,7 +131,9 @@ class WesisClient:
                 raise RuntimeError("Cannot obtain WESIS index; no G/T calculated") from None
         candidates = []
         for line in index.read_text(encoding="utf-8").splitlines():
-            match = re.fullmatch(r"data_repository/sfx/\d{4}/\d{3}/WETZ_SFX1_(\d{8}_\d{4})_\w+\.SFX", line.strip())
+            match = re.fullmatch(
+                r"data_repository/sfx/\d{4}/\d{3}/WETZ_SFX1_(\d{8}_\d{4})_\w+\.SFX", line.strip()
+            )
             if match:
                 timestamp = datetime.strptime(match[1], "%Y%m%d_%H%M").replace(tzinfo=UTC)
                 delta = abs((when - timestamp).total_seconds())
@@ -131,5 +156,7 @@ class WesisClient:
             except (httpx.HTTPError, ValueError, OSError):
                 continue
         if not records:
-            raise RuntimeError("No valid recent WESIS data; retry after publication delay or check cache/network")
+            raise RuntimeError(
+                "No valid recent WESIS data; retry after publication delay or check cache/network"
+            )
         return select_flux(records, frequency, when, self.config.max_flux_age_seconds)

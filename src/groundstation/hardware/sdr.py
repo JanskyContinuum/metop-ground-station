@@ -16,6 +16,7 @@ class SDRReceiver:
 
     def __enter__(self):
         import SoapySDR
+
         self.api = SoapySDR
         self.device = SoapySDR.Device(dict(driver=self.config.driver))
         try:
@@ -37,16 +38,20 @@ class SDRReceiver:
             elif "biastee" in global_keys:
                 self.device.writeSetting("biastee", value)
             else:
-                raise RuntimeError("Driver exposes no biastee setting; verify the installed Soapy plugin")
+                raise RuntimeError(
+                    "Driver exposes no biastee setting; verify the installed Soapy plugin"
+                )
             return self
         except Exception:
             self.close()
             raise
 
     def info(self):
-        return dict(hardware=dict(self.device.getHardwareInfo()),
-                    requested_sample_rate_hz=self.config.sample_rate_hz,
-                    actual_sample_rate_hz=self.actual_rate)
+        return dict(
+            hardware=dict(self.device.getHardwareInfo()),
+            requested_sample_rate_hz=self.config.sample_rate_hz,
+            actual_sample_rate_hz=self.actual_rate,
+        )
 
     def chunks(self, seconds, stop):
         if not math.isfinite(seconds) or seconds <= 0:
@@ -67,7 +72,7 @@ class SDRReceiver:
                 result = self.device.readStream(self.stream, [buffer], mtu, timeoutUs=200000)
                 if result.ret > 0:
                     last_data = time.monotonic()
-                    yield buffer[:result.ret * 2]
+                    yield buffer[: result.ret * 2]
                 elif result.ret not in (0, api.SOAPY_SDR_TIMEOUT):
                     # Overflow is data loss, not a timeout that may be silently ignored.
                     raise RuntimeError(f"SDR stream failure/data loss: {result.ret}")
@@ -85,8 +90,12 @@ class SDRReceiver:
                 samples += chunk.size // 2
         if not samples:
             raise RuntimeError("No SDR samples received")
-        return dict(recording_start=started.isoformat(), recording_end=datetime.now(UTC).isoformat(),
-                    samples=samples, actual_sample_rate_hz=self.actual_rate)
+        return dict(
+            recording_start=started.isoformat(),
+            recording_end=datetime.now(UTC).isoformat(),
+            samples=samples,
+            actual_sample_rate_hz=self.actual_rate,
+        )
 
     def mean_power(self, seconds, stop):
         total, count, clipped = 0.0, 0, 0

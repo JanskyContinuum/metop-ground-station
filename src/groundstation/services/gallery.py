@@ -31,7 +31,7 @@ def store_result(root, source, metadata):
             json.dump(metadata, stream, indent=2, allow_nan=False)
             stream.flush()
             os.fsync(stream.fileno())
-        with (staging / "avhrr.png").open("rb") as stream:
+        with (staging / "avhrr.png").open("rb+") as stream:
             os.fsync(stream.fileno())
         staging.rename(destination)
         # Sync the directory entry on the Linux station before raw removal.
@@ -50,8 +50,12 @@ def store_result(root, source, metadata):
 def scan_gallery(root):
     results = []
     for path in root.glob("[0-9][0-9][0-9][0-9]/*/metadata.json"):
+        if path.parent.name.startswith("."):
+            continue
         image = path.parent / "avhrr.png"
-        if not path.resolve().is_relative_to(root.resolve()) or not image.resolve().is_relative_to(root.resolve()):
+        if not path.resolve().is_relative_to(root.resolve()) or not image.resolve().is_relative_to(
+            root.resolve()
+        ):
             continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

@@ -15,7 +15,11 @@ log = logging.getLogger(__name__)
 class Observation:
     def __init__(self, config, rotor, receiver_factory, decoder, hardware_lock):
         self.config, self.rotor = config, rotor
-        self.receiver_factory, self.decoder, self.hardware_lock = receiver_factory, decoder, hardware_lock
+        self.receiver_factory, self.decoder, self.hardware_lock = (
+            receiver_factory,
+            decoder,
+            hardware_lock,
+        )
         self.motion_guard = threading.Lock()
 
     def emergency_stop(self, stop):
@@ -36,7 +40,8 @@ class Observation:
             directory = config.work_dir / f"obs-{uuid.uuid4().hex}"
             directory.mkdir(parents=True)
             (directory / "observation.json").write_text(
-                json.dumps({"pass": selected.id, "started": utcnow().isoformat()}), encoding="utf-8")
+                json.dumps({"pass": selected.id, "started": utcnow().isoformat()}), encoding="utf-8"
+            )
             raw = directory / "capture.cs16"
             tracker = None
             tracking_stop = threading.Event()
@@ -44,8 +49,12 @@ class Observation:
             try:
                 start, end = selected.recording_window
                 state("PREPARING")
-                check_space(directory, config.sdr.sample_rate_hz,
-                            max(0, (end - utcnow()).total_seconds()), config.storage)
+                check_space(
+                    directory,
+                    config.sdr.sample_rate_hz,
+                    max(0, (end - utcnow()).total_seconds()),
+                    config.storage,
+                )
                 target = self._point(*selected.position(max(start, utcnow()), config.station), stop)
                 self.rotor.wait_for_position(target, stop)
                 if stop.wait(max(0, (start - utcnow()).total_seconds())):
@@ -76,6 +85,7 @@ class Observation:
 
                     def wait(self, seconds):
                         import time
+
                         deadline = time.monotonic() + seconds
                         while not self.is_set() and time.monotonic() < deadline:
                             stop.wait(min(0.1, max(0, deadline - time.monotonic())))
@@ -106,14 +116,23 @@ class Observation:
                 source = find_avhrr(products, config.satdump.image_glob)
                 if stop.is_set():
                     raise InterruptedError("Processing cancelled; raw retained")
-                metadata = dict(satellite=selected.satellite, aos=selected.aos.isoformat(),
-                                los=selected.los.isoformat(), tca=selected.tca.isoformat(),
-                                max_elevation=selected.max_elevation, **recording,
-                                frequency_hz=config.sdr.center_frequency_hz,
-                                requested_sample_rate_hz=config.sdr.sample_rate_hz,
-                                gain=config.sdr.gain, agc=config.sdr.agc, biastee=config.sdr.biastee,
-                                pipeline=config.satdump.pipeline, tle_epoch=selected.tle_epoch,
-                                source_image=source.relative_to(products).as_posix(), simulated=config.mock)
+                metadata = dict(
+                    satellite=selected.satellite,
+                    aos=selected.aos.isoformat(),
+                    los=selected.los.isoformat(),
+                    tca=selected.tca.isoformat(),
+                    max_elevation=selected.max_elevation,
+                    **recording,
+                    frequency_hz=config.sdr.center_frequency_hz,
+                    requested_sample_rate_hz=config.sdr.sample_rate_hz,
+                    gain=config.sdr.gain,
+                    agc=config.sdr.agc,
+                    biastee=config.sdr.biastee,
+                    pipeline=config.satdump.pipeline,
+                    tle_epoch=selected.tle_epoch,
+                    source_image=source.relative_to(products).as_posix(),
+                    simulated=config.mock,
+                )
                 destination = store_result(config.gallery_dir, source, metadata)
                 remove_work(directory, config.work_dir)
                 state("COMPLETE")

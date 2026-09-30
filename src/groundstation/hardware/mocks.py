@@ -40,20 +40,29 @@ class MockSDR:
         pass
 
     def info(self):
-        return dict(hardware={"device": "SIMULATED RSP1B"},
-                    requested_sample_rate_hz=self.config.sample_rate_hz,
-                    actual_sample_rate_hz=self.actual_rate)
+        return dict(
+            hardware={"device": "SIMULATED RSP1B"},
+            requested_sample_rate_hz=self.config.sample_rate_hz,
+            actual_sample_rate_hz=self.actual_rate,
+        )
 
     def record(self, path, seconds, stop):
         started = datetime.now(UTC)
         with path.open("xb") as stream:
             stream.write(b"\x01\x00\x02\x00" * 4096)
         stop.wait(max(0, seconds))
-        return dict(recording_start=started.isoformat(), recording_end=datetime.now(UTC).isoformat(),
-                    samples=4096, actual_sample_rate_hz=self.actual_rate, mock=True)
+        return dict(
+            recording_start=started.isoformat(),
+            recording_end=datetime.now(UTC).isoformat(),
+            samples=4096,
+            actual_sample_rate_hz=self.actual_rate,
+            mock=True,
+        )
 
     def mean_power(self, seconds, stop):
-        raise RuntimeError("G/T requires real measured power; mock mode cannot produce a G/T result")
+        raise RuntimeError(
+            "G/T requires real measured power; mock mode cannot produce a G/T result"
+        )
 
 
 class MockSatDump:
@@ -67,7 +76,9 @@ class MockSatDump:
         for i in range(14):
             draw.ellipse((i * 70 - 80, 100 + i % 3 * 40, i * 70 + 140, 350), fill="#789f9d")
         draw.rectangle((0, 0, 800, 70), fill="#102530")
-        draw.text((24, 25), "SIMULATED AVHRR - software demonstration, no RF reception", fill="white")
+        draw.text(
+            (24, 25), "SIMULATED AVHRR - software demonstration, no RF reception", fill="white"
+        )
         image.save(directory / "avhrr_composite.png")
 
     def available(self):

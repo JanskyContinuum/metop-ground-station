@@ -71,14 +71,26 @@ def create_app(config=None):
         passes.update({p.id: p for p in status["selected"]})
         if status["active"]:
             passes[status["active"].id] = status["active"]
-        return templates.TemplateResponse(request=request, name=f"{page}.html", context=dict(
-            page=page, config=config, status=status, images=images, csrf=app.state.csrf,
-            passes=sorted(passes.values(), key=lambda p: p.aos), selected_ids=selected_ids,
-            tle_age=runtime.tle.age_hours(), tle_warning=runtime.tle.warning,
-            prediction_error=runtime.prediction_error, hardware=runtime.diagnostics.status,
-            free_gb=shutil.disk_usage(config.work_dir).free / 1e9,
-            message=request.query_params.get("message"), error=request.query_params.get("error"),
-        ))
+        return templates.TemplateResponse(
+            request=request,
+            name=f"{page}.html",
+            context=dict(
+                page=page,
+                config=config,
+                status=status,
+                images=images,
+                csrf=app.state.csrf,
+                passes=sorted(passes.values(), key=lambda p: p.aos),
+                selected_ids=selected_ids,
+                tle_age=runtime.tle.age_hours(),
+                tle_warning=runtime.tle.warning,
+                prediction_error=runtime.prediction_error,
+                hardware=runtime.diagnostics.status,
+                free_gb=shutil.disk_usage(config.work_dir).free / 1e9,
+                message=request.query_params.get("message"),
+                error=request.query_params.get("error"),
+            ),
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request):
@@ -99,7 +111,9 @@ def create_app(config=None):
     def redirect(path, action):
         try:
             message = action() or "Done"
-            return RedirectResponse(path + "?" + urlencode({"message": str(message)}), status_code=303)
+            return RedirectResponse(
+                path + "?" + urlencode({"message": str(message)}), status_code=303
+            )
         except Exception as exc:
             return RedirectResponse(path + "?" + urlencode({"error": str(exc)}), status_code=303)
 
@@ -110,9 +124,12 @@ def create_app(config=None):
             if selected is None:
                 raise ValueError("Pass has changed; refresh the list")
             if not config.mock and (not config.rotor.host or not config.rotor.limits_confirmed):
-                raise ValueError("Configure verified rotor.host and confirm mechanical limits first")
+                raise ValueError(
+                    "Configure verified rotor.host and confirm mechanical limits first"
+                )
             runtime.scheduler.schedule(selected)
             return "Pass selected in memory"
+
         return redirect("/passes", action)
 
     @app.post("/passes/{identifier}/cancel")
@@ -121,7 +138,18 @@ def create_app(config=None):
 
     @app.post("/hardware/{action}")
     def hardware_action(action: str):
-        if action not in {"rotor", "position", "park", "stop", "jog", "sdr", "record", "satdump", "tle", "resume"}:
+        if action not in {
+            "rotor",
+            "position",
+            "park",
+            "stop",
+            "jog",
+            "sdr",
+            "record",
+            "satdump",
+            "tle",
+            "resume",
+        }:
             raise HTTPException(404)
 
         def perform():
@@ -131,24 +159,41 @@ def create_app(config=None):
                     raise RuntimeError(runtime.tle.warning or runtime.prediction_error)
                 return "TLE/pass refresh complete (requests are rate limited)"
             if action == "resume":
-                return runtime.scheduler.resume()
+                with runtime.lock.hold("resume"):
+                    runtime.scheduler.resume()
+                    runtime.diagnostics.halted = False
+                    runtime.diagnostics.cancel.clear()
+                return "Scheduling resumed"
             if action == "stop":
+                # Latch first so a new observation cannot win a race with STOP.
+                runtime.scheduler.halt()
                 if runtime.scheduler.snapshot()["active"]:
                     runtime.scheduler.stop()
                     return "STOP sent; active pass cancelled and selections cleared"
+                if runtime.lock.owner and runtime.lock.owner.startswith("diagnostic"):
+                    runtime.diagnostics.emergency_stop()
+                    return "STOP sent; diagnostic cancelled and selections cleared"
                 # Do not interrupt another process's G/T operation then allow it to resume motion.
                 with runtime.lock.hold("STOP"):
                     runtime.scheduler.stop()
                     return "STOP sent; selections cleared"
+            if runtime.scheduler.snapshot()["halted"] and action in {"park", "jog", "record"}:
+                raise ValueError(
+                    "Station stopped; resume before running movement or recording tests"
+                )
             return runtime.diagnostics.run(action)
+
         return redirect("/hardware", perform)
 
     @app.get("/api/status")
     def status():
         snapshot = runtime.scheduler.snapshot()
-        return dict(state=snapshot["state"], error=snapshot["error"],
-                    selected=[p.id for p in snapshot["selected"]],
-                    active=snapshot["active"].id if snapshot["active"] else None,
-                    simulated=config.mock)
+        return dict(
+            state=snapshot["state"],
+            error=snapshot["error"],
+            selected=[p.id for p in snapshot["selected"]],
+            active=snapshot["active"].id if snapshot["active"] else None,
+            simulated=config.mock,
+        )
 
     return app

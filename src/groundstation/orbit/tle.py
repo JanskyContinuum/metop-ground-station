@@ -26,7 +26,7 @@ def parse_tle(text: str) -> dict[str, Elements]:
         raise ValueError("Expected named three-line TLE records")
     records = {}
     for i in range(0, len(lines), 3):
-        name, first, second = lines[i:i + 3]
+        name, first, second = lines[i : i + 3]
         name = name.removeprefix("0 ").strip().upper()
         for number, line in enumerate((first, second), 1):
             if len(line) != 69 or not line.startswith(f"{number} ") or not line[-1].isdigit():
@@ -72,13 +72,21 @@ class TLEManager:
     def load(self, force=False):
         with self.lock:
             old = self.records
+            cache_valid = False
             if self.path.exists():
                 try:
                     old = parse_tle(self.path.read_text(encoding="utf-8"))
+                    cache_valid = True
                 except (ValueError, OSError) as exc:
                     self.warning = f"Invalid TLE cache: {exc}"
             age = self.age_hours()
-            if old and age is not None and age < self.config.max_age_hours and not force:
+            if (
+                old
+                and cache_valid
+                and age is not None
+                and age < self.config.max_age_hours
+                and not force
+            ):
                 self.records = old
                 return old
             if time.monotonic() - self.last_attempt < self.config.retry_seconds:

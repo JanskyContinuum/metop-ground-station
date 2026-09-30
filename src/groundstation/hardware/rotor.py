@@ -24,8 +24,9 @@ class RotorController:
     def _request(self, command, lines=1):
         if not self.config.host:
             raise ValueError("Set rotor.host to the verified Pi Zero address")
-        with socket.create_connection((self.config.host, self.config.port),
-                                      timeout=self.config.timeout_sec) as sock:
+        with socket.create_connection(
+            (self.config.host, self.config.port), timeout=self.config.timeout_sec
+        ) as sock:
             sock.settimeout(self.config.timeout_sec)
             sock.sendall((command + "\n").encode("ascii"))
             with sock.makefile("rb") as stream:
@@ -49,7 +50,9 @@ class RotorController:
     def set_position(self, azimuth, elevation):
         with self.mutex:
             if not self.config.limits_confirmed:
-                raise ValueError("Confirm rotor mechanical limits and clear swept paths in configuration")
+                raise ValueError(
+                    "Confirm rotor mechanical limits and clear swept paths in configuration"
+                )
             if not math.isfinite(elevation) or not (
                 self.config.elevation_min_deg <= elevation <= self.config.elevation_max_deg
             ):
@@ -75,7 +78,9 @@ class RotorController:
         deadline = time.monotonic() + self.config.settle_timeout_sec
         while not stop.is_set():
             actual = self.get_position()
-            if all(abs(a - b) <= self.config.position_tolerance_deg for a, b in zip(actual, target)):
+            if all(
+                abs(a - b) <= self.config.position_tolerance_deg for a, b in zip(actual, target)
+            ):
                 return
             if time.monotonic() >= deadline:
                 raise TimeoutError("Rotor did not reach commanded position")

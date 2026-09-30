@@ -19,7 +19,9 @@ def check_space(path, rate, seconds, storage):
     required += storage.safety_margin_bytes
     free = shutil.disk_usage(path).free
     if free < required:
-        raise RuntimeError(f"Insufficient disk: need {required / 1e9:.2f} GB, have {free / 1e9:.2f} GB")
+        raise RuntimeError(
+            f"Insufficient disk: need {required / 1e9:.2f} GB, have {free / 1e9:.2f} GB"
+        )
     return required
 
 
@@ -34,8 +36,9 @@ def remove_work(directory, root):
 
 def mark_failed(directory, message):
     temp = directory / "failed.tmp"
-    temp.write_text(json.dumps({"failed_at": datetime.now(UTC).isoformat(), "error": message}),
-                    encoding="utf-8")
+    temp.write_text(
+        json.dumps({"failed_at": datetime.now(UTC).isoformat(), "error": message}), encoding="utf-8"
+    )
     temp.replace(directory / "failed.json")
 
 

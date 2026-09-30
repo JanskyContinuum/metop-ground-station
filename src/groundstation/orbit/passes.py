@@ -52,7 +52,10 @@ class Pass:
             fraction = (when - self.aos).total_seconds() / self.duration
             return 120 + 20 * fraction, 65.0
         az, el = self.orbital.get_observer_look(
-            orbital_time(when), station.longitude_deg, station.latitude_deg, station.altitude_m / 1000
+            orbital_time(when),
+            station.longitude_deg,
+            station.latitude_deg,
+            station.altitude_m / 1000,
         )
         return float(az), float(el)
 
@@ -66,6 +69,7 @@ def visibility_windows(aos, los, position, mask, rotor, step):
         visible = mask.visible(az, el) and rotor.elevation_min_deg <= el <= rotor.elevation_max_deg
         # Test equivalent azimuths without opening a rotor connection.
         from groundstation.hardware.rotor import legal_azimuth
+
         try:
             legal_azimuth(az, 0, rotor)
         except ValueError:
@@ -95,8 +99,11 @@ def predict(config, records, now=None):
         # Include an ongoing pass, but never select a visibility window already over.
         search_start = now - timedelta(minutes=20)
         raw = orbital.get_next_passes(
-            orbital_time(search_start), ceil(config.passes.prediction_hours + 1),
-            station.longitude_deg, station.latitude_deg, station.altitude_m / 1000,
+            orbital_time(search_start),
+            ceil(config.passes.prediction_hours + 1),
+            station.longitude_deg,
+            station.latitude_deg,
+            station.altitude_m / 1000,
         )
         for aos, los, tca in raw:
             aos, los, tca = (t.replace(tzinfo=UTC) for t in (aos, los, tca))
@@ -107,8 +114,12 @@ def predict(config, records, now=None):
             if peak < config.passes.minimum_max_elevation_deg:
                 continue
             windows = visibility_windows(
-                aos, los, lambda t: draft.position(t, station), mask,
-                config.rotor, config.passes.sample_seconds,
+                aos,
+                los,
+                lambda t: draft.position(t, station),
+                mask,
+                config.rotor,
+                config.passes.sample_seconds,
             )
             windows = tuple(w for w in windows if w[1] > now)
             if windows:
@@ -122,6 +133,7 @@ def mock_passes(now=None):
     for seconds in (30, 180, 360):
         start = now + timedelta(seconds=seconds)
         end = start + timedelta(seconds=8)
-        result.append(Pass("METOP-C", start, end, start + (end - start) / 2,
-                           65, ((start, end),), mock=True))
+        result.append(
+            Pass("METOP-C", start, end, start + (end - start) / 2, 65, ((start, end),), mock=True)
+        )
     return result

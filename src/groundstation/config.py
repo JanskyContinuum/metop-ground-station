@@ -119,6 +119,7 @@ class Config(Model):
         if self.sdr.driver != "sdrplay" or self.satdump.baseband_format != "cs16":
             raise ValueError("Only SDRplay CS16 acquisition is supported")
         from groundstation.orbit.horizon import HorizonMask
+
         HorizonMask(self.horizon_mask)
         root = self.storage.root.resolve()
         paths = [(root / p).resolve() for p in (self.storage.work, self.storage.gallery)]

@@ -37,7 +37,9 @@ class Scheduler:
             for other in [*self.selected.values(), *([self.active] if self.active else [])]:
                 left, right = self.interval(other)
                 if start < right and left < end:
-                    raise ValueError(f"Pass conflicts with selected/running {other.satellite}, including preposition")
+                    raise ValueError(
+                        f"Pass conflicts with selected/running {other.satellite}, including preposition"
+                    )
             self.selected[item.id] = item
             if not self.active:
                 self.state = "WAITING"
@@ -54,12 +56,15 @@ class Scheduler:
                 self.state = "IDLE"
 
     def stop(self):
+        self.halt()
+        self.observation.emergency_stop(self.cancel_event)
+
+    def halt(self):
         with self.mutex:
             self.halted = True
             self.selected.clear()
             self.cancel_event.set()
             self.error = "STOP requested; selections cleared. Resume scheduling explicitly."
-        self.observation.emergency_stop(self.cancel_event)
 
     def resume(self):
         with self.mutex:
@@ -69,9 +74,13 @@ class Scheduler:
 
     def snapshot(self):
         with self.mutex:
-            return dict(state=self.state, error=self.error, active=self.active,
-                        selected=sorted(self.selected.values(), key=lambda p: p.recording_window[0]),
-                        halted=self.halted)
+            return dict(
+                state=self.state,
+                error=self.error,
+                active=self.active,
+                selected=sorted(self.selected.values(), key=lambda p: p.recording_window[0]),
+                halted=self.halted,
+            )
 
     def _state(self, value):
         with self.mutex:
@@ -108,6 +117,7 @@ class Scheduler:
         def run():
             while not self.shutdown_event.wait(0.2):
                 self.tick()
+
         self.thread = threading.Thread(target=run, name="pass-scheduler")
         self.thread.start()
 

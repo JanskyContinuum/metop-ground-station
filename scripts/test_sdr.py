@@ -8,12 +8,16 @@ from groundstation.services.diagnostics import Diagnostics
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Probe SDRplay and record/delete a 3-second CS16 test")
+    parser = argparse.ArgumentParser(
+        description="Probe SDRplay and record/delete a 3-second CS16 test"
+    )
     parser.add_argument("--config")
     args = parser.parse_args()
     config = load_config(args.config)
     factory = MockSDR if config.mock else SDRReceiver
-    diagnostics = Diagnostics(config, None, factory, None, HardwareLock(config.storage.root.resolve()))
+    diagnostics = Diagnostics(
+        config, None, factory, None, HardwareLock(config.storage.root.resolve())
+    )
     print(diagnostics.run("record"))
 
 
