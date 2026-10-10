@@ -25,6 +25,9 @@ def test_mock_is_offline_and_uses_separate_root(monkeypatch, tmp_path):
         {"station": {"latitude_deg": float("nan")}},
         {"sdr": {"driver": "hydrasdr"}},
         {"sdr": {"sample_rate_hz": 0}},
+        {"tracking_limits": {"stop_elevation_deg": 50}},
+        {"rotor": {"clearance_azimuth_min_deg": 220}},
+        {"rotor": {"elevation_min_deg": 0, "park_azimuth_deg": 200, "park_elevation_deg": 9}},
     ],
 )
 def test_invalid_configuration(settings):

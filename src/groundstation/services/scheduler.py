@@ -1,5 +1,6 @@
 import logging
 import threading
+from dataclasses import replace
 from datetime import timedelta
 
 from groundstation.orbit.passes import utcnow
@@ -27,7 +28,10 @@ class Scheduler:
         start, end = item.recording_window
         return start - timedelta(seconds=self.preposition_seconds), end
 
-    def schedule(self, item):
+    def schedule(self, item, mode="record"):
+        if mode not in {"record", "track"}:
+            raise ValueError("Choose record or track mode")
+        item = replace(item, mode=mode)
         with self.mutex:
             if self.halted:
                 raise ValueError("Station stopped; resume scheduling explicitly first")

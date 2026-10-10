@@ -30,6 +30,11 @@ class Pass:
     orbital: object = field(default=None, repr=False, compare=False)
     tle_epoch: str | None = None
     mock: bool = False
+    mode: str = "record"
+
+    @property
+    def mode_label(self):
+        return "Track only" if self.mode == "track" else "Track and record"
 
     @property
     def id(self):
@@ -50,7 +55,7 @@ class Pass:
     def position(self, when, station):
         if self.mock:
             fraction = (when - self.aos).total_seconds() / self.duration
-            return 120 + 20 * fraction, 65.0
+            return 240 + 20 * fraction, 65.0
         az, el = self.orbital.get_observer_look(
             orbital_time(when),
             station.longitude_deg,
@@ -60,28 +65,37 @@ class Pass:
         return float(az), float(el)
 
 
-def visibility_windows(aos, los, position, mask, rotor, step):
+def visibility_windows(aos, los, position, mask, rotor, step, tracking_limits=None):
     windows, start = [], None
+    started = False
     count = ceil((los - aos).total_seconds() / step)
     for i in range(count + 1):
         when = min(aos + timedelta(seconds=i * step), los)
         az, el = position(when)
         visible = mask.visible(az, el) and rotor.elevation_min_deg <= el <= rotor.elevation_max_deg
         # Test equivalent azimuths without opening a rotor connection.
-        from groundstation.hardware.rotor import legal_azimuth
+        from groundstation.hardware.rotor import legal_azimuth, validate_elevation
 
         try:
             legal_azimuth(az, 0, rotor)
+            validate_elevation(az, el, rotor)
         except ValueError:
             visible = False
-        if visible and start is None and when < los:
+        stop_reached = tracking_limits and started and not tracking_limits.can_continue(el)
+        if stop_reached:
+            visible = False
+        can_start = tracking_limits is None or tracking_limits.can_start(az, el)
+        if visible and start is None and when < los and can_start:
             start = when
+            started = True
         if start is not None and (not visible or when == los):
             # End at the last known valid sample, never across a mask gap.
             end = when if visible else max(start, when - timedelta(seconds=step))
             if end > start:
                 windows.append((start, end))
             start = None
+        if stop_reached:
+            break
     return tuple(windows)
 
 
@@ -120,6 +134,7 @@ def predict(config, records, now=None):
                 mask,
                 config.rotor,
                 config.passes.sample_seconds,
+                config.tracking_limits,
             )
             windows = tuple(w for w in windows if w[1] > now)
             if windows:

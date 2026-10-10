@@ -24,6 +24,9 @@ class Rotor(Model):
     azimuth_max_deg: float = 300
     elevation_min_deg: float = Field(default=50, ge=0, le=180)
     elevation_max_deg: float = Field(default=180, ge=0, le=180)
+    clearance_azimuth_min_deg: float = Field(default=194, ge=0, lt=360)
+    clearance_azimuth_max_deg: float = Field(default=210, gt=0, le=360)
+    clearance_elevation_min_deg: float = Field(default=10, ge=0, le=180)
     park_azimuth_deg: float = 0
     park_elevation_deg: float = 50
     update_interval_sec: float = Field(default=1.5, ge=0.1, le=10)
@@ -40,6 +43,15 @@ class Rotor(Model):
             raise ValueError("Park elevation must lie inside mechanical limits")
         if self.azimuth_min_deg >= self.azimuth_max_deg:
             raise ValueError("Invalid azimuth limits")
+        if self.clearance_azimuth_min_deg >= self.clearance_azimuth_max_deg:
+            raise ValueError("Invalid clearance sector")
+        if (
+            self.clearance_azimuth_min_deg
+            < self.park_azimuth_deg % 360
+            < self.clearance_azimuth_max_deg
+        ):
+            if self.park_elevation_deg < self.clearance_elevation_min_deg:
+                raise ValueError("Park elevation violates sector clearance")
         return self
 
 
@@ -60,6 +72,24 @@ class SatDump(Model):
     baseband_format: str = "cs16"
     image_glob: str | None = None
     timeout_sec: float = Field(default=1800, gt=0)
+
+
+class TrackingLimits(Model):
+    start_azimuth_gt_deg: float = Field(default=200, ge=0, lt=360)
+    start_elevation_gt_deg: float = Field(default=50, ge=0, lt=90)
+    stop_elevation_deg: float = Field(default=20, ge=0, le=90)
+
+    @model_validator(mode="after")
+    def thresholds(self):
+        if self.stop_elevation_deg >= self.start_elevation_gt_deg:
+            raise ValueError("Tracking stop elevation must be below start elevation")
+        return self
+
+    def can_start(self, azimuth, elevation):
+        return azimuth % 360 > self.start_azimuth_gt_deg and elevation > self.start_elevation_gt_deg
+
+    def can_continue(self, elevation):
+        return elevation > self.stop_elevation_deg
 
 
 class Passes(Model):
@@ -107,6 +137,7 @@ class Config(Model):
     sdr: SDR = Field(default_factory=SDR)
     satdump: SatDump = Field(default_factory=SatDump)
     passes: Passes = Field(default_factory=Passes)
+    tracking_limits: TrackingLimits = Field(default_factory=TrackingLimits)
     tle: TLE = Field(default_factory=TLE)
     storage: Storage = Field(default_factory=Storage)
     web: Web = Field(default_factory=Web)

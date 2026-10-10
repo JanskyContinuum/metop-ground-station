@@ -11,6 +11,10 @@ rotor:
   azimuth_max_deg: 300
   elevation_min_deg: 50 # Conservative collision clearance; verify swept paths.
   elevation_max_deg: 180
+  # Additional mechanical limit from the station sign; never lowers the global floor.
+  clearance_azimuth_min_deg: 194 # Strictly inside (194, 210), normalized azimuth.
+  clearance_azimuth_max_deg: 210
+  clearance_elevation_min_deg: 10
   park_azimuth_deg: 0
   park_elevation_deg: 50
   update_interval_sec: 1.5
@@ -39,6 +43,11 @@ satdump:
   baseband_format: cs16
   image_glob: null # e.g. '**/AVHRR/**/avhrr_3_rgb*.png'
   timeout_sec: 1800
+tracking_limits:
+  # Apply to every pass in both modes, in addition to rotor limits and horizon_mask.
+  start_azimuth_gt_deg: 200
+  start_elevation_gt_deg: 50
+  stop_elevation_deg: 20 # End at or below this elevation; other limits may end earlier.
 passes:
   prediction_hours: 2
   minimum_max_elevation_deg: 50

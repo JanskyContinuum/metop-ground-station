@@ -2,7 +2,7 @@ import io
 
 import pytest
 
-from groundstation.hardware.rotor import RotorController, legal_azimuth
+from groundstation.hardware.rotor import RotorController, legal_azimuth, validate_elevation
 
 
 def test_nearest_legal_azimuth(config):
@@ -27,6 +27,29 @@ def test_invalid_elevation_never_sends_command(config, monkeypatch):
 def test_unconfirmed_limits_reject_motion(config):
     with pytest.raises(ValueError, match="Confirm"):
         RotorController(config.rotor).set_position(0, 60)
+
+
+@pytest.mark.parametrize("azimuth", [195, 200, 209, -160, 560])
+def test_additional_sector_clearance_blocks_before_network(config, monkeypatch, azimuth):
+    config.rotor.elevation_min_deg = 0
+    config.rotor.limits_confirmed = True
+    rotor = RotorController(config.rotor)
+    monkeypatch.setattr(rotor, "_request", lambda *_: pytest.fail("unsafe command sent"))
+    with pytest.raises(ValueError, match="clearance"):
+        rotor.set_position(azimuth, 9.99)
+    validate_elevation(azimuth, 10, config.rotor)
+
+
+@pytest.mark.parametrize("azimuth", [194, 210, 193, 211])
+def test_sector_boundaries_are_strict(config, azimuth):
+    config.rotor.elevation_min_deg = 0
+    validate_elevation(azimuth, 0, config.rotor)
+
+
+def test_sector_never_relaxes_existing_floor(config):
+    with pytest.raises(ValueError, match="mechanical range"):
+        validate_elevation(200, 10, config.rotor)
+    validate_elevation(200, 50, config.rotor)
 
 
 def test_rotctld_reads_separate_lines_and_exact_ack(config, monkeypatch):

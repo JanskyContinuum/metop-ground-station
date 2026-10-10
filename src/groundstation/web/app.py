@@ -3,6 +3,7 @@ import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from urllib.parse import parse_qs, urlencode
 from zoneinfo import ZoneInfo
 
@@ -118,7 +119,7 @@ def create_app(config=None):
             return RedirectResponse(path + "?" + urlencode({"error": str(exc)}), status_code=303)
 
     @app.post("/passes/{identifier}/schedule")
-    def schedule(identifier: str):
+    def schedule(identifier: str, mode: Literal["record", "track"] = "record"):
         def action():
             selected = next((p for p in runtime.passes if p.id == identifier), None)
             if selected is None:
@@ -127,8 +128,12 @@ def create_app(config=None):
                 raise ValueError(
                     "Configure verified rotor.host and confirm mechanical limits first"
                 )
-            runtime.scheduler.schedule(selected)
-            return "Pass selected in memory"
+            runtime.scheduler.schedule(selected, mode=mode)
+            return (
+                "Tracking only selected (no recording)"
+                if mode == "track"
+                else "Pass selected in memory"
+            )
 
         return redirect("/passes", action)
 
@@ -193,6 +198,8 @@ def create_app(config=None):
             error=snapshot["error"],
             selected=[p.id for p in snapshot["selected"]],
             active=snapshot["active"].id if snapshot["active"] else None,
+            active_mode=snapshot["active"].mode if snapshot["active"] else None,
+            selected_modes={p.id: p.mode for p in snapshot["selected"]},
             simulated=config.mock,
         )
 

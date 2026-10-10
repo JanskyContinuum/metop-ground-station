@@ -34,7 +34,32 @@ class Observation:
                 raise InterruptedError("Observation stopped")
             return self.rotor.set_position(az, el)
 
+    def _start_position(self, selected, when):
+        az, el = selected.position(when, self.config.station)
+        if not self.config.tracking_limits.can_start(az, el):
+            raise ValueError("Pass position does not meet tracking start limits")
+        if not HorizonMask(self.config.horizon_mask).visible(az, el):
+            raise ValueError("Pass position is below the horizon mask")
+        return az, el
+
+    def _prepare(self, selected, stop):
+        start, end = selected.recording_window
+        if utcnow() >= end:
+            raise RuntimeError("Usable visibility has already ended")
+        target = self._point(*self._start_position(selected, max(start, utcnow())), stop)
+        self.rotor.wait_for_position(target, stop)
+        if stop.wait(max(0, (start - utcnow()).total_seconds())):
+            raise InterruptedError("Observation cancelled before start")
+        if utcnow() >= end:
+            raise RuntimeError("Usable visibility ended before preparation completed")
+        # Recheck after preposition/settling; a late start may no longer be allowed.
+        self._point(*self._start_position(selected, utcnow()), stop)
+
     def execute(self, selected, stop, state):
+        if selected.mode == "track":
+            return self.track_only(selected, stop, state)
+        if selected.mode != "record":
+            raise ValueError("Unknown observation mode")
         config = self.config
         with self.hardware_lock.hold(f"pass {selected.satellite}"):
             directory = config.work_dir / f"obs-{uuid.uuid4().hex}"
@@ -47,7 +72,7 @@ class Observation:
             tracking_stop = threading.Event()
             errors = []
             try:
-                start, end = selected.recording_window
+                _, end = selected.recording_window
                 state("PREPARING")
                 check_space(
                     directory,
@@ -55,12 +80,7 @@ class Observation:
                     max(0, (end - utcnow()).total_seconds()),
                     config.storage,
                 )
-                target = self._point(*selected.position(max(start, utcnow()), config.station), stop)
-                self.rotor.wait_for_position(target, stop)
-                if stop.wait(max(0, (start - utcnow()).total_seconds())):
-                    raise InterruptedError("Observation cancelled before recording")
-                if utcnow() >= end:
-                    raise RuntimeError("Usable visibility ended before preparation completed")
+                self._prepare(selected, stop)
                 state("TRACKING")
                 mask = HorizonMask(config.horizon_mask)
 
@@ -68,7 +88,9 @@ class Observation:
                     try:
                         while not tracking_stop.is_set() and not stop.is_set() and utcnow() < end:
                             az, el = selected.position(utcnow(), config.station)
-                            if not mask.visible(az, el):
+                            if not mask.visible(az, el) or not config.tracking_limits.can_continue(
+                                el
+                            ):
                                 # Do not concatenate recordings across an obstruction gap.
                                 tracking_stop.set()
                                 break
@@ -146,6 +168,42 @@ class Observation:
                 if tracker is not None:
                     tracker.join()
                 # Cancellation/failure only stops; it never automatically resumes motion to park.
+                try:
+                    with self.motion_guard:
+                        self.rotor.stop()
+                except Exception:
+                    log.exception("Rotor STOP failed; check the physical controller")
+
+    def track_only(self, selected, stop, state):
+        """Use only the rotor: no SDR, decoder, observation files or gallery output."""
+        config = self.config
+        with self.hardware_lock.hold(f"pass {selected.satellite} (track only)"):
+            try:
+                _, end = selected.recording_window
+                state("PREPARING")
+                self._prepare(selected, stop)
+                state("TRACKING")
+                mask = HorizonMask(config.horizon_mask)
+                while not stop.is_set() and utcnow() < end:
+                    az, el = selected.position(utcnow(), config.station)
+                    if not mask.visible(az, el) or not config.tracking_limits.can_continue(el):
+                        break
+                    self._point(az, el, stop)
+                    stop.wait(
+                        min(
+                            config.rotor.update_interval_sec,
+                            max(0, (end - utcnow()).total_seconds()),
+                        )
+                    )
+                if stop.is_set():
+                    raise InterruptedError("Tracking stopped")
+                with self.motion_guard:
+                    if stop.is_set():
+                        raise InterruptedError("Tracking stopped")
+                    target = self.rotor.park()
+                self.rotor.wait_for_position(target, stop)
+                state("COMPLETE")
+            finally:
                 try:
                     with self.motion_guard:
                         self.rotor.stop()

@@ -4,6 +4,16 @@ import threading
 import time
 
 
+def validate_elevation(azimuth, elevation, config):
+    if not math.isfinite(azimuth) or not math.isfinite(elevation):
+        raise ValueError("Non-finite rotor position")
+    if not config.elevation_min_deg <= elevation <= config.elevation_max_deg:
+        raise ValueError("Elevation outside mechanical range")
+    if config.clearance_azimuth_min_deg < azimuth % 360 < config.clearance_azimuth_max_deg:
+        if elevation < config.clearance_elevation_min_deg:
+            raise ValueError("Elevation below mechanical clearance in azimuth sector")
+
+
 def legal_azimuth(azimuth, current, config):
     if not math.isfinite(azimuth) or not math.isfinite(current):
         raise ValueError("Non-finite rotor position")
@@ -53,10 +63,7 @@ class RotorController:
                 raise ValueError(
                     "Confirm rotor mechanical limits and clear swept paths in configuration"
                 )
-            if not math.isfinite(elevation) or not (
-                self.config.elevation_min_deg <= elevation <= self.config.elevation_max_deg
-            ):
-                raise ValueError("Elevation outside mechanical range")
+            validate_elevation(azimuth, elevation, self.config)
             current, _ = self.get_position()
             target = legal_azimuth(azimuth, current, self.config)
             if self._request(f"P {target:.3f} {elevation:.3f}") != ["RPRT 0"]:

@@ -1,5 +1,7 @@
 import threading
+from dataclasses import replace
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -106,6 +108,86 @@ def test_stop_prevents_late_motion(config):
     with pytest.raises(InterruptedError):
         observer._point(130, 65, stop)
     assert observer.rotor.get_position() == original
+
+
+def test_tracking_only_never_opens_sdr_or_writes_observation(config, quick_pass):
+    observer = observation(config)
+    observer.receiver_factory = Mock(side_effect=AssertionError("SDR must not open"))
+    observer.decoder = Mock()
+    observer.rotor.set_position = Mock(wraps=observer.rotor.set_position)
+    states = []
+    observer.execute(replace(quick_pass, mode="track"), threading.Event(), states.append)
+    assert states == ["PREPARING", "TRACKING", "COMPLETE"]
+    assert observer.rotor.set_position.call_count >= 3
+    assert observer.rotor.stopped
+    observer.receiver_factory.assert_not_called()
+    observer.decoder.process.assert_not_called()
+    assert not config.work_dir.exists()
+    assert not config.gallery_dir.exists()
+
+
+def test_tracking_stop_never_parks_or_records(config, quick_pass):
+    observer = observation(config)
+    stop = threading.Event()
+    observer.rotor.park = Mock()
+    observer.receiver_factory = Mock()
+
+    def state(value):
+        if value == "TRACKING":
+            observer.emergency_stop(stop)
+
+    with pytest.raises(InterruptedError, match="stopped"):
+        observer.execute(replace(quick_pass, mode="track"), stop, state)
+    observer.rotor.park.assert_not_called()
+    observer.receiver_factory.assert_not_called()
+    assert observer.rotor.stopped
+    assert not config.work_dir.exists()
+
+
+@pytest.mark.parametrize("mode", ["track", "record"])
+@pytest.mark.parametrize("position", [(200, 65), (240, 50)])
+def test_invalid_start_never_moves_or_opens_sdr(config, mode, position):
+    observer = observation(config)
+    observer.rotor.set_position = Mock()
+    observer.receiver_factory = Mock()
+    now = utcnow()
+    selected = SimpleNamespace(
+        id="test",
+        satellite="METOP-C",
+        mode=mode,
+        recording_window=(now, now + timedelta(seconds=20)),
+        position=Mock(return_value=position),
+    )
+    with pytest.raises(ValueError, match="start limits"):
+        observer.execute(selected, threading.Event(), lambda _: None)
+    observer.rotor.set_position.assert_not_called()
+    observer.receiver_factory.assert_not_called()
+    assert observer.rotor.stopped
+
+
+@pytest.mark.parametrize("mode", ["track", "record"])
+def test_tracking_live_stop_threshold_never_commands_low_position(config, quick_pass, mode):
+    config.rotor.elevation_min_deg = 0
+    config.horizon_mask = [(0, 0)]
+    observer = observation(config)
+    observer.rotor.set_position = Mock(wraps=observer.rotor.set_position)
+    now = utcnow()
+    orbital = Mock()
+    orbital.get_observer_look.side_effect = [(240, 65), (240, 65), (180, 21), (180, 20)]
+    selected = replace(
+        quick_pass,
+        mode=mode,
+        mock=False,
+        orbital=orbital,
+        windows=((now, now + timedelta(seconds=20)),),
+    )
+    states = []
+    observer.execute(selected, threading.Event(), states.append)
+    targets = [c.args for c in observer.rotor.set_position.call_args_list]
+    assert (180, 21) in targets
+    assert (180, 20) not in targets
+    assert states[-1] == "COMPLETE"
+    assert observer.rotor.stopped
 
 
 def test_diagnostic_stop_is_latched(config):

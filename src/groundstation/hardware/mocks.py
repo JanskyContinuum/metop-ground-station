@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from PIL import Image, ImageDraw
 
-from groundstation.hardware.rotor import RotorController, legal_azimuth
+from groundstation.hardware.rotor import RotorController, legal_azimuth, validate_elevation
 
 
 class MockRotor(RotorController):
@@ -17,8 +17,7 @@ class MockRotor(RotorController):
 
     def set_position(self, azimuth, elevation):
         with self.mutex:
-            if not self.config.elevation_min_deg <= elevation <= self.config.elevation_max_deg:
-                raise ValueError("Elevation outside mechanical range")
+            validate_elevation(azimuth, elevation, self.config)
             self.position = legal_azimuth(azimuth, self.position[0], self.config), elevation
             self.stopped = False
             return self.position

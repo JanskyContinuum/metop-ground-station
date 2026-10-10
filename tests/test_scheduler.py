@@ -60,3 +60,22 @@ def test_missed_pass_is_not_recorded(quick_pass):
     scheduler.tick(quick_pass.los + timedelta(seconds=1))
     observation.execute.assert_not_called()
     assert "Missed" in scheduler.error
+
+
+def test_tracking_mode_survives_queue_and_conflicts_with_recording(quick_pass):
+    observation = Mock()
+    scheduler = Scheduler(observation, 30)
+    scheduler.schedule(quick_pass, mode="track")
+    assert scheduler.snapshot()["selected"][0].mode == "track"
+    assert quick_pass.mode == "record"
+    with pytest.raises(ValueError, match="conflicts"):
+        scheduler.schedule(replace(quick_pass, satellite="METOP-B"))
+    scheduler.tick()
+    assert observation.execute.call_args.args[0].mode == "track"
+
+
+def test_invalid_mode_rejected(quick_pass):
+    scheduler = Scheduler(Mock(), 0)
+    with pytest.raises(ValueError, match="mode"):
+        scheduler.schedule(quick_pass, mode="typo")
+    assert not scheduler.selected
